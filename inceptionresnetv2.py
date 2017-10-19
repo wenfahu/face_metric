@@ -234,6 +234,7 @@ class Block8(nn.Module):
 
 class InceptionResNetV2(nn.Module):
 
+    output_size = 128
     def __init__(self, num_classes=1001):
         super(InceptionResNetV2, self).__init__()
         # Special attributs
@@ -321,7 +322,6 @@ class InceptionResNetV2(nn.Module):
         x = F.avg_pool2d(x, kernel_size=x.size(-1))
         x = x.view(x.size(0), -1)
         x = self.embedding(x)
-        x = self.classif(x) 
         return x
 
 def inceptionresnetv2(num_classes=1001, pretrained=None):

@@ -6,6 +6,7 @@ import torchvision.transforms as transforms
 from torch.autograd import Variable
 import torch.optim as optim
 import model
+import itertools
 import sampler
 import time
 
@@ -28,15 +29,16 @@ trans = transforms.Compose([transforms.Scale((160, 160)), transforms.ToTensor()]
 faceset = ImageFolder(root=args.data_dir, transform=trans)
 adapt_sampler = lambda batch, dataset, sampler, **kwargs: type('', (), dict(__len__ = dataset.__len__, __iter__ = lambda _: itertools.chain.from_iterable(sampler(batch, dataset, **kwargs))))()
 
-train_loader = torch.utils.data.DataLoader(faceset, sampler = adapt_sampler(opts.batch, dataset_train, opts.sampler), num_workers = opts.threads, batch_size = opts.batch, drop_last = True)
+train_loader = torch.utils.data.DataLoader(faceset, sampler = adapt_sampler(args.batch_size, faceset, args.sampler), num_workers = args.threads, batch_size = args.batch_size, drop_last = True)
 
 base_model = inceptionresnetv2()
 model = args.model(base_model, len(faceset.classes)).cuda()
+base_model_lr_mult = model.optimizer_params.pop('base_model_lr_mult', 1.0)
 optimizer = optim.Adam(base_model.parameters(), **model.optimizer_params)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, **model.lr_scheduler_params)
+# scheduler = torch.optim.lr_scheduler.StepLR(optimizer, **model.lr_scheduler_params)
 
 for epoch in range(args.epochs):
-    scheduler.step()
+    # scheduler.step()
     model.train()
     loss_all = []
     for batch_idx, batch in enumerate(train_loader):

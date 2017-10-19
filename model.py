@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 def topk_mask(input, dim, K = 10, **kwargs):
 	index = input.topk(max(1, min(K, input.size(dim))), dim = dim, **kwargs)[1]
-	return torch.autograd.Variable(torch.zeros_like(input.data)).scatter(dim, index, 1.0)
+	return torch.autograd.Variable(torch.zeros(input.size())).scatter(dim, index, 1.0)
 
 def pdist(A, squared = False, eps = 1e-4):
 	prod = torch.mm(A, A.t())
@@ -24,7 +24,7 @@ class Model(nn.Module):
 	
 	criterion = None
 	optimizer = torch.optim.SGD
-	optimizer_params = dict(lr = 1e-5, momentum = 0.9, weight_decay = 2e-4, dampening = 0.9)
+	optimizer_params = dict(lr = 1e-5,  weight_decay = 2e-4 )
 	lr_scheduler_params = dict(step_size = float('inf'), gamma = 0.1)
 
 class Untrained(Model):
@@ -46,7 +46,7 @@ class Triplet(Model):
 		M = pos.unsqueeze(1).expand_as(T) * (1 - pos.unsqueeze(2).expand_as(T))
 		return (M * F.relu(T - T.transpose(1, 2) + margin)).sum() / M.sum()
 	
-	optimizer_params = dict(lr = 1e-4, momentum = 0.9, weight_decay = 5e-4)
+	optimizer_params = dict(lr = 1e-4,  weight_decay = 5e-4)
 	lr_scheduler_params = dict(step_size = 30, gamma = 0.5)
 
 class TripletRatio(Model):
@@ -58,7 +58,7 @@ class TripletRatio(Model):
 		return (M * T.div(T.transpose(1, 2) + margin)).sum() / M.sum()
 
 class Pddm(Model):
-	def __init__(self, base_model, num_classes, d = 1024):
+	def __init__(self, base_model, num_classes, d = 128):
 		nn.Module.__init__(self)
 		self.base_model = base_model
 		#self.embedder = nn.Linear(base_model.output_size, d)
@@ -92,19 +92,19 @@ class Pddm(Model):
 
 		return E_m + Lambda * E_e
 	
-	optimizer_params = dict(lr = 1e-4, momentum = 0.9, weight_decay = 5e-4)
+	optimizer_params = dict(lr = 1e-4,  weight_decay = 5e-4)
 	lr_scheduler_params = dict(step_size = 10, gamma = 0.1)
 
 class Margin(Model):
 	def forward(self, input):
 		return F.normalize(Model.forward(self, input))
 
-	def criterion(self, embeddings, labels, alpha = 0.2, beta = 1.2, distance_threshold = 0.5, inf = 1e6, eps = 1e-6, distance_weighted_sampling = False):
+	def criterion(self, embeddings, labels, alpha = 0.2, beta = 1.2, distance_threshold = 0.5, inf = 1e6, eps = 1e-6, distance_weighted_sampling = True):
 		d = pdist(embeddings)
 		pos = torch.eq(*[labels.unsqueeze(dim).expand_as(d) for dim in [0, 1]]).type_as(d) - torch.autograd.Variable(torch.eye(len(d))).type_as(d)
 		num_neg = int(pos.data.sum() / len(pos))
 		if distance_weighted_sampling:
-			neg = torch.autograd.Variable(torch.zeros_like(pos.data).scatter_(1, torch.multinomial((d.data.clamp(min = distance_threshold).pow(embeddings.size(-1) - 2) * (1 - d.data.clamp(min = distance_threshold).pow(2) / 4).pow(0.5 * (embeddings.size(-1) - 3))).reciprocal().masked_fill_(pos.data + torch.eye(len(d)).type_as(d.data) > 0, eps), replacement = False, num_samples = num_neg), 1))
+			neg = torch.autograd.Variable(torch.zeros(pos.size()).scatter_(1, torch.multinomial((d.data.clamp(min = distance_threshold).pow(embeddings.size(-1) - 2) * (1 - d.data.clamp(min = distance_threshold).pow(2) / 4).pow(0.5 * (embeddings.size(-1) - 3))).reciprocal().masked_fill_(pos.data + torch.eye(len(d)).type_as(d.data) > 0, eps), replacement = False, num_samples = num_neg), 1))
 		else:
 			neg = topk_mask(d  + inf * ((pos > 0) + (d < distance_threshold)).type_as(d), dim = 1, largest = False, K = num_neg)
 		L = F.relu(alpha + (pos * 2 - 1) * (d - beta))
